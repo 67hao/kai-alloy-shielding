@@ -1,0 +1,49 @@
+name: Kai Alloy Shielding Swarm
+on:
+  workflow_dispatch:
+    inputs:
+      primaries:
+        description: 'Số hạt tính toán mỗi job'
+        required: true
+        default: '1000000'
+      gdrive_folder:
+        description: 'Google Drive Folder ID'
+        required: true
+      is_rescue:
+        description: 'Chế độ cứu hộ (true/false)'
+        required: false
+        default: 'false'
+      rescue_jobs:
+        description: 'Danh sách jobs cứu hộ (cách nhau bởi dấu phẩy)'
+        required: false
+        default: ''
+
+jobs:
+  swarm-matrix:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        runner_id: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Micromamba & Runtime Binary
+        run: |
+          curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj bin/micromamba -O > /tmp/micromamba
+          chmod +x /tmp/micromamba
+          /tmp/micromamba create -y -p /tmp/env -c conda-forge geant4 geant4-data-g4ndl cmake make gxx_linux-64 python=3.11 pandas google-api-python-client requests
+      - name: Compile Simulation Binary
+        run: |
+          export PATH="/tmp/env/bin:$PATH"
+          mkdir -p build && cd build && cmake .. && make -j2
+
+      - name: Execute Simulation & Stream Results to Google Drive
+        env:
+          GDRIVE_OAUTH_JSON: ${{ secrets.GDRIVE_OAUTH_JSON }}
+          GDRIVE_FOLDER_ID: ${{ github.event.inputs.gdrive_folder }}
+        run: |
+          export PATH="/tmp/env/bin:$PATH"
+          python3 run_task.py --runner-id ${{ matrix.runner_id }} --primaries ${{ github.event.inputs.primaries }} \
+            --is-rescue ${{ github.event.inputs.is_rescue }} \
+            --rescue-jobs "${{ github.event.inputs.rescue_jobs }}"
